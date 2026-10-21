@@ -1,8 +1,10 @@
 # Azure AKS platform engineering plan
 
 Build an internal developer platform on Azure Kubernetes Service (AKS), provision
-Azure infrastructure with Terraform, and use open-source platform tools wherever
-practical. Start with a small, usable paved road before adding a developer portal.
+Azure infrastructure with Terraform, and prefer Azure-managed services where they
+meet requirements. Retain open-source tools for gaps rather than duplicating
+managed capabilities. Start with a small, usable paved road before adding a
+developer portal.
 
 **Status:** design only. This repository does not yet contain deployable Terraform,
 Kubernetes manifests, pipelines, or an installed platform. All directories and
@@ -33,7 +35,11 @@ Confirm Azure tenant/subscriptions, region and availability-zone support, naming
 and tags, domain and DNS ownership, identity groups, expected workload sizes,
 data residency, budget, and production availability requirements. Agree numerical
 service SLOs, recovery time objectives (RTO), recovery point objectives (RPO),
-log retention, and backup retention with stakeholders.
+log retention, and backup retention with stakeholders. Verify each selected
+service's regional availability, SKU, feature status (GA or preview), Terraform
+support, private connectivity, quotas, and AKS/version compatibility before
+implementation. These checks remain outstanding; this plan does not claim
+current feature availability or support parity.
 
 Use separate subscriptions for non-production and production where possible.
 For an initial pilot, development and staging may share a non-production cluster
@@ -49,37 +55,75 @@ Developer -> pull request -> GitHub Actions -> build/scan -> ACR
                                                     v
 Backstage (later) -> approved repository workflow -> Argo CD -> AKS workloads
 
-Terraform -> Azure network, private DNS, identities, state, ACR, Key Vault, AKS
-          -> one-time Argo CD bootstrap -> GitOps owns platform/workload releases
+Terraform -> Azure network, DNS, identities, state, ACR, Key Vault, AKS
+          -> Azure monitoring, backup, policy, and managed add-on configuration
+Separate bootstrap -> Argo CD -> applications and remaining in-cluster components
 
 AKS workloads -> Workload Identity -> scoped Azure services
-             -> OpenTelemetry -> Prometheus / Grafana / Loki / Tempo
-             -> application-native backups + Velero -> Azure Blob Storage
+             -> managed Prometheus -> Azure Managed Grafana
+             -> Container Insights -> Log Analytics
+             -> Azure Monitor OpenTelemetry -> Application Insights
+             -> Azure Backup for AKS + application-native database backups
+Azure Monitor alerts -> Action Groups -> responders
 ```
 
 ### Tool selection
 
-| Capability | Initial choice | Responsibility |
+| Capability | Preferred choice | Responsibility and exceptions |
 | --- | --- | --- |
 | Azure infrastructure | Terraform, AzureRM provider | Versioned modules and isolated environment state |
 | Kubernetes runtime | AKS with Azure CNI Overlay and supported Cilium networking | Private API, network-policy enforcement, system/user node pools |
 | Delivery | Argo CD, Helm, Kustomize | Pull-based reconciliation and environment overlays |
 | Image builds | BuildKit, OCI images stored in ACR | Reproducible builds and immutable digest promotion |
-| Supply-chain checks | Trivy, Syft, Cosign | Vulnerability checks, SBOMs, signing and verification |
-| Traffic and TLS | Traefik with Gateway API, cert-manager, ExternalDNS | Routing, certificates, and scoped DNS automation |
-| Secrets | External Secrets Operator (ESO), Azure Key Vault | Workload Identity authentication and controlled secret synchronization |
-| Policy | Kyverno and Kubernetes Pod Security Admission | Trusted images, restricted pods, required metadata and limits |
-| Metrics and dashboards | Prometheus, Alertmanager, Grafana | Platform SLOs, actionable alerts, developer dashboards |
-| Logs and traces | Loki, Tempo, OpenTelemetry Collector | Correlated telemetry with retention and access controls |
-| Backup | Velero and application-native database backups | Restore-tested Kubernetes resources and supported volume data |
-| Cost visibility | OpenCost | Namespace/team allocation and capacity tuning |
-| Developer experience, later | Backstage | Catalog, ownership, docs, and approved service templates |
+| Supply-chain checks | Microsoft Defender for Containers; Trivy, Syft, Cosign in CI | Defender complements, not replaces, CI scanning, SBOMs, signing, and admission verification |
+| Application ingress | Evaluate Application Gateway for Containers | Gate adoption on required Gateway API routes, private frontend/networking, regional support, and cost; retain Traefik if requirements are unmet |
+| DNS and certificates | Azure DNS, Key Vault certificates, appropriate Kubernetes controllers | Scope DNS automation; use cert-manager/ExternalDNS where required and supported; Key Vault alone does not issue and renew every application certificate or configure Gateway TLS |
+| Secrets | Azure Key Vault with AKS Secrets Store CSI Driver | Prefer mounted secrets and Workload Identity; use ESO only for justified synchronization needs |
+| Policy | Azure Policy for AKS and Pod Security Admission | Use Kyverno for required signature verification or unsupported policies; avoid overlapping enforcement |
+| Prometheus metrics | Azure Monitor managed service for Prometheus | Managed collection/storage via Azure Monitor workspace; no default self-hosted Prometheus |
+| Dashboards | Azure Managed Grafana | Entra access and scoped data-source permissions; no default in-cluster Grafana |
+| Alerting | Azure Monitor alerts and Action Groups | Prometheus/log/metric alert rules and tested routing; no default self-hosted Alertmanager |
+| Container logs | Container Insights and Log Analytics | Bounded collection/retention and access controls instead of Loki |
+| Application traces | Application Insights with Azure Monitor OpenTelemetry | Instrument applications and test supported SDK/export paths instead of deploying Tempo |
+| Backup | Azure Backup for AKS and application-native database backups | Validate storage coverage and restore restrictions; consider Velero only for documented unmet requirements |
+| Cost visibility | Azure Cost Management and AKS cost analysis | Verify SKU/access and allocation coverage; use OpenCost only for unmet requirements |
+| Developer experience, later | Backstage | Catalog, ownership, docs, and approved templates; no assumed direct Azure replacement |
 
 Pin compatible, supported releases during implementation, including Helm charts,
 providers, modules, Kubernetes versions, Gateway API CRDs, and controller versions.
 Do not assume that every optional enterprise feature is available in a tool's
 open-source edition. Verify Gateway API route support and AKS networking
-compatibility in development before adopting them.
+compatibility in development before adopting them. Argo CD remains the GitOps
+controller; Azure's Flux-based GitOps is an alternative requiring an explicit
+decision, not an additional reconciler for the same resources.
+
+### Managed-service adoption gates
+
+- **Observability:** provision Azure Monitor workspace, Log Analytics workspace,
+  Application Insights, Managed Grafana, data collection rules/associations,
+  alert rules, and Action Groups through Terraform. Verify the selected agents,
+  sampling, scrape coverage, PromQL/dashboard compatibility, ingestion limits,
+  retention, and per-environment cost budgets. Do not assume managed Prometheus
+  provides identical retention/configuration options to self-hosted Prometheus.
+- **Private access:** validate ingestion, query, Grafana data sources, user access,
+  and DNS separately. Evaluate Azure Monitor Private Link Scope and each service's
+  own private endpoint/managed private endpoint capabilities and tiers. A private
+  dashboard endpoint does not by itself make all telemetry paths private.
+- **Backup:** verify Azure Backup for AKS coverage for actual CSI drivers, volume
+  types, region, cluster versions, vault tier, retention, and target restore
+  topology. Record unsupported resources and cross-region/subscription restrictions.
+  A snapshot alone is not an independent disaster-recovery backup; use supported
+  vaulted protection where required and test application-consistent restores.
+- **Security:** Azure Policy is not a drop-in replacement for every Kyverno rule,
+  and Defender scanning is not image-signature admission enforcement. Map controls
+  to one enforcement owner and retain explicit trusted signing identities.
+- **Edge and TLS:** evaluate Application Gateway for Containers before selection;
+  do not assume private frontend or route-feature support. If it cannot meet the
+  requirements, document the Traefik fallback. Verify certificate issuance,
+  Key Vault import/access, controller integration, renewal, and TLS reload.
+
+Do not deploy parallel self-hosted observability stacks or blanket fallback
+controllers. Record the requirement, operational cost, and approval for exceptions.
 
 ### Network and identity boundaries
 
@@ -92,18 +136,21 @@ compatibility in development before adopting them.
   endpoints. Never expose the API publicly merely to make hosted CI work.
 - Prefer private endpoints for ACR, Key Vault, Terraform state, and backup storage
   where supported by the chosen service tiers. Include tier costs and DNS tests.
-- Publish only intended application routes through a dedicated load balancer and
-  gateway. Keep Argo CD, Grafana, and Backstage internal initially; authenticate
-  with Entra ID/OIDC and apply team-scoped authorization.
+- Publish only intended application routes through the selected gateway.
+  Keep Argo CD and Backstage internal initially and select Managed Grafana
+  networking that meets private-access requirements. Authenticate with Entra
+  ID/OIDC and apply team-scoped authorization and data-source RBAC.
 - Use Entra groups for humans and least-privilege RBAC. Disable local AKS accounts.
   Enable AKS OIDC issuer and Workload Identity; scope each workload identity to
   its service account and required Azure resources.
 - GitHub Actions authenticates to Azure through federated OIDC credentials,
   restricted to the repository and approved environment/ref. Do not use stored
   client secrets, storage account keys, or broad subscription Owner grants.
-- ESO synchronization creates Kubernetes Secrets: restrict readers, protect
-  backups, and test refresh/rotation. Keep secret values out of Git, Helm values,
-  Terraform inputs/state wherever possible, plans, and logs.
+- Prefer Key Vault CSI-mounted secrets. Test rotation and application reload;
+  environment variables do not automatically refresh. CSI secret synchronization
+  and optional ESO create Kubernetes Secrets: restrict readers, protect backups,
+  and document why synchronization is needed. Keep secret values out of Git, Helm
+  values, Terraform inputs/state wherever possible, plans, and logs.
 
 ## Terraform and GitOps ownership
 
@@ -118,6 +165,9 @@ infra/
     acr/
     key-vault/
     aks/
+    monitoring/              # Managed telemetry, collection, alerting, Grafana
+    backup/                  # Azure Backup vault, policies, supported protection
+    policy/                  # Azure Policy assignments and Defender configuration
   environments/
     dev/
     staging/
@@ -154,8 +204,13 @@ configuration stays here or moves to a dedicated deployment repository.
 5. Provision Azure infrastructure, then install Argo CD through a separate,
    explicit bootstrap step with private cluster access. Do not combine an
    unknown/new cluster endpoint and Kubernetes provider setup in one initial apply.
-6. Hand chart releases and Kubernetes objects to Argo CD. Document the ownership
-   boundary: Terraform and Argo CD must never reconcile the same object.
+6. Terraform owns Azure resources, including monitoring, backup, policy, managed
+   add-on enablement, extensions, identities, and associated Azure configuration.
+   Azure manages objects installed by its enabled add-ons/extensions; exclude
+   those objects from Argo CD ownership. Argo CD owns application manifests and
+   remaining in-cluster components, including application SecretProviderClasses
+   and any approved fallback controllers. Document the bootstrap handoff and
+   resource inventory: no object may have competing reconciliation owners.
 
 ### Delivery and change control
 
@@ -192,8 +247,9 @@ plan. Budget alerts, ownership, and state recovery responsibilities are assigned
 ### 2. AKS baseline
 
 Create private AKS with separate system and user node pools, zone distribution
-where supported, autoscaling, managed identities, policy enforcement, and an
-upgrade strategy. Define namespace quotas, requests/limits, default-deny network
+where supported, autoscaling, managed identities, Azure Policy for AKS, Defender
+for Containers, the Key Vault CSI add-on, and an upgrade strategy. Review their
+permissions and cost before enablement. Define namespace quotas, requests/limits, default-deny network
 policies with explicit DNS/dependency allowances, disruption budgets, and
 topology spread constraints.
 
@@ -203,11 +259,15 @@ traffic is blocked; upgrades and node drains preserve the agreed availability.
 
 ### 3. GitOps, edge, and security
 
-Bootstrap Argo CD, install Gateway API CRDs/controllers in dependency order,
-then cert-manager, ExternalDNS, ESO, and Kyverno. Scope DNS writes to the intended
-zone. Test certificate validation and renewal, including the DNS challenge path
-if used for internal services. Start new admission policies in audit mode, fix
-violations, then enforce with narrowly scoped, expiring exceptions.
+Bootstrap Argo CD and select the ingress controller only after the managed-edge
+evaluation. Install required CRDs/controllers in dependency order without taking
+ownership of Azure-managed objects. Configure Azure DNS and Key Vault certificate
+integration with cert-manager/ExternalDNS only where required. Scope DNS writes
+to the intended zone. Prefer CSI-mounted secrets; justify ESO separately.
+Test certificate validation and renewal, including any DNS challenge path.
+Map Azure Policy and Pod Security Admission controls, retaining Kyverno for
+signature verification or gaps. Start new policies in audit mode, fix violations,
+then enforce with narrowly scoped, expiring exceptions.
 
 **Exit gate:** one sample service deploys from Git with valid TLS, restricted
 network access, rotated secrets, and verified images. Drift is detected, a
@@ -215,12 +275,18 @@ bad image/pod is rejected, and a Git revert restores the previous release.
 
 ### 4. Reliability, observability, and cost
 
-Install metrics, logs, traces, and OpenCost with team ownership labels and bounded
-retention. Keep sensitive request data out of telemetry. Configure alert routing,
-runbooks, backup storage permissions, and encrypted backups. Verify the Velero
-Azure integration and CSI snapshot/data-mover support for the actual storage
-classes; a volume snapshot alone is not an independent disaster-recovery backup.
-Use database-native backups where consistency requires them.
+Provision managed Prometheus, Managed Grafana, Container Insights/Log Analytics,
+and Application Insights with Azure Monitor OpenTelemetry. Configure collection,
+sampling, supported retention controls, Entra/data-source permissions, Azure
+Monitor alerts, and Action Groups. Keep sensitive request data out of telemetry.
+Enable Azure Cost Management reporting and supported AKS cost analysis; add
+OpenCost only if a documented allocation requirement remains unmet.
+
+Configure Azure Backup for AKS with scoped identities, vault/policy retention,
+supported storage protection, and recovery runbooks. Verify coverage and restore
+restrictions for actual storage classes and target clusters before relying on it.
+Use database-native backups where consistency requires them; approve Velero only
+for a documented gap rather than deploying two overlapping backup owners.
 
 **Exit gate:** a synthetic failure reaches an accountable responder; dashboards
 show service health and team costs; a restore into a separate namespace/cluster
@@ -257,17 +323,22 @@ successful cloud deployment based on static checks alone.
 | --- | --- |
 | Terraform | `terraform fmt -check -recursive`, per-root `terraform init -backend=false` and `terraform validate`; TFLint; Trivy config scan; trusted environment-specific plans |
 | Helm/Kustomize | `helm lint`, `helm template`, `kustomize build`, and rendered schema validation against target Kubernetes/CRD versions |
-| Policies | Kyverno CLI tests for accepted/rejected workloads and signature trust rules |
-| Integration | Private DNS/API reachability, least-privilege RBAC, network-policy allow/deny cases, secret rotation, TLS renewal, GitOps drift/rollback |
-| Operations | Node drain/upgrade rehearsal, alert delivery, isolated restore, and cost/retention review |
+| Policies | Azure Policy compliance/enforcement and Pod Security Admission allow/deny cases; Kyverno CLI tests for retained signature rules or gaps |
+| Managed services | Region/SKU/GA status, provider support, managed add-on ownership, private ingestion/query/Grafana data-source paths, collection rules, and RBAC |
+| Integration | Private DNS/API reachability, network-policy allow/deny cases, CSI rotation/application reload, TLS renewal, GitOps drift/rollback, and trace/log/metric correlation |
+| Operations | Node drain/upgrade rehearsal, Action Group alert delivery, actual volume backup coverage and isolated restore to agreed RTO/RPO, and cost/retention review |
 
 ## Cost and operational trade-offs
 
 Start with the smallest viable non-production footprint and add components only
 when their exit gates can be supported. Budget for node pools, production
 redundancy, networking/egress, private endpoints, ACR tiers, DNS, storage, backups,
-and telemetry ingestion/retention. Open-source software still needs maintenance
-and Azure capacity. Defer service mesh, Crossplane, multi-cluster orchestration,
+and telemetry ingestion/retention. Include Managed Grafana capacity/tier, monitored
+metric series, log ingestion, trace sampling, alerts, Defender, and backup
+protected instances/storage in estimates. Azure-managed services reduce operating
+work but are not necessarily open source or cheaper; review lock-in, export
+options, retention limits, and service dependencies. Open-source exceptions still
+need maintenance and Azure capacity. Defer service mesh, Crossplane, multi-cluster orchestration,
 and multi-region failover until a concrete requirement warrants them; retain
 Terraform as the single Azure infrastructure owner.
 
@@ -289,6 +360,17 @@ separately during implementation.
 
 - [AKS baseline architecture](https://learn.microsoft.com/azure/architecture/reference-architectures/containers/aks/baseline-aks)
 - [AKS Workload Identity](https://learn.microsoft.com/azure/aks/workload-identity-overview)
+- [Azure Monitor managed Prometheus](https://learn.microsoft.com/azure/azure-monitor/metrics/prometheus-metrics-overview)
+- [Azure Managed Grafana](https://learn.microsoft.com/azure/managed-grafana/overview)
+- [Container Insights](https://learn.microsoft.com/azure/azure-monitor/containers/container-insights-overview)
+- [Azure Monitor OpenTelemetry](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-overview)
+- [Azure Monitor Action Groups](https://learn.microsoft.com/azure/azure-monitor/alerts/action-groups)
+- [AKS backup support matrix](https://learn.microsoft.com/azure/backup/azure-kubernetes-service-cluster-backup-support-matrix)
+- [AKS Key Vault CSI driver](https://learn.microsoft.com/azure/aks/csi-secrets-store-driver)
+- [Azure Policy for Kubernetes](https://learn.microsoft.com/azure/governance/policy/concepts/policy-for-kubernetes)
+- [Defender for Containers](https://learn.microsoft.com/azure/defender-for-cloud/defender-for-containers-introduction)
+- [AKS cost analysis](https://learn.microsoft.com/azure/aks/cost-analysis)
+- [Application Gateway for Containers](https://learn.microsoft.com/azure/application-gateway/for-containers/overview)
 - [Terraform Azure Blob backend](https://developer.hashicorp.com/terraform/language/backend/azurerm)
 - [Argo CD documentation](https://argo-cd.readthedocs.io/en/stable/)
 - [GitHub Copilot repository instructions](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions)

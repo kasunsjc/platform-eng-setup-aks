@@ -7,7 +7,8 @@
 - This repository currently contains a plan and Copilot guidance, not deployed
   infrastructure. Do not describe proposed paths, commands, or resources as
   existing or tested without verifying them.
-- Prefer Azure, AKS, Terraform, and the open-source tools selected in the plan.
+- Prefer Azure-managed services, AKS, and Terraform as selected in the plan.
+  Retain open-source tools for documented gaps, not duplicate managed capabilities.
   Explain licensing and operational trade-offs; do not label current Terraform
   releases or managed Azure services as OSI-approved open source.
 - Keep changes focused. Do not provision resources when asked only for a plan.
@@ -33,10 +34,24 @@
   public AKS API access as a CI connectivity workaround.
 - Bootstrap private connectivity and state before deploying a private AKS cluster.
   Separate Azure infrastructure provisioning from Argo CD bootstrap.
-- Terraform owns Azure infrastructure; Argo CD owns platform and workload
-  Kubernetes objects after bootstrap. Never give both ownership of one object.
-- Reference Key Vault secrets rather than embedding their values. Account for
-  ESO-created Kubernetes Secrets, access restrictions, backups, and rotation.
+- Terraform owns Azure resources, monitoring, backup, policy, and managed add-on
+  configuration. Azure owns objects installed by those add-ons/extensions.
+  Argo CD owns applications and remaining in-cluster components after bootstrap.
+  Never give competing reconcilers ownership of one object.
+- Prefer managed Prometheus, Azure Managed Grafana, Azure Monitor alerts/Action
+  Groups, Container Insights/Log Analytics, and Application Insights with Azure
+  Monitor OpenTelemetry. Do not install self-hosted equivalents by default.
+- Prefer Azure Backup for AKS, Azure Policy, Defender for Containers, and Azure
+  Cost Management/AKS cost analysis. Validate coverage; retain database-native
+  backups, CI scanning/SBOM/signing, and Kyverno signature verification or gaps.
+- Reference Key Vault secrets using the AKS Secrets Store CSI Driver rather than
+  embedding values. Justify ESO or Kubernetes Secret synchronization, restrict
+  readers/backups, and test rotation plus application reload.
+- Evaluate Application Gateway for Containers against networking, Gateway API,
+  region, and feature requirements before adoption. Azure DNS and Key Vault
+  certificates still need supported issuance/renewal/controller integration.
+- Retain Argo CD and later Backstage; Flux is an alternative, not a second
+  reconciler. Record operational cost and approval for open-source exceptions.
 - Use immutable image digests, signature trust rules, restricted pod security,
   network policies, and documented exceptions. Do not silently weaken controls.
 - Keep production applies behind explicit approval. Never run privileged workflows
@@ -48,6 +63,9 @@
   automated test suite exists yet; add checks only alongside implementation.
 - For documentation-only edits, check consistency, local links, skill metadata,
   and accidental secrets. Do not deploy Azure resources to validate prose.
+- Verify managed-service region/SKU/GA status, Terraform support, private
+  ingestion/query/data-source paths, RBAC, collection/retention costs, backup
+  coverage, and restore restrictions before production. Report unverified claims.
 - Once Terraform exists, use formatting, per-root initialization/validation,
   configured lint/security checks, and reviewed environment-specific plans.
 - Once GitOps manifests exist, lint/render charts and overlays, validate schemas,

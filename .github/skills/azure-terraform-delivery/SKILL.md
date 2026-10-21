@@ -1,6 +1,6 @@
 ---
 name: azure-terraform-delivery
-description: Implement or review Terraform for Azure networking, identity, state, ACR, Key Vault, and AKS. Use for infrastructure modules, environment roots, bootstrap, and Terraform CI changes.
+description: Implement or review Terraform for Azure networking, identity, state, AKS, managed monitoring, backup, and policy. Use for infrastructure modules, environment roots, bootstrap, and Terraform CI changes.
 ---
 
 # Azure Terraform delivery
@@ -22,7 +22,18 @@ description: Implement or review Terraform for Azure networking, identity, state
    verify private runner reachability instead of opening public access.
 6. Separate Azure provisioning from Argo CD bootstrap. Do not configure Kubernetes
    providers against an endpoint that is still unknown in the initial apply.
-   Avoid creating resources already reconciled by Argo CD.
+   Own Azure resources and managed add-on/extension configuration in Terraform;
+   Azure owns objects installed by those add-ons. Avoid creating resources
+   already reconciled by Argo CD, and do not ask Argo CD to own managed objects.
+   Include managed Prometheus workspaces, Managed Grafana, Log Analytics,
+   Application Insights, collection rules/associations, alerts/Action Groups,
+   Azure Backup, Azure Policy, Defender, and cost reporting where requested.
+   Verify region/SKU/GA status, provider support, private ingestion/query/data-source
+   connectivity, scoped RBAC, telemetry budgets/retention, backup storage coverage,
+   and restore restrictions. Do not claim feature support without evidence.
+   Enable Key Vault CSI integration without reading secret values into state.
+   Evaluate Application Gateway for Containers before adoption; keep DNS and
+   certificate lifecycle/controller requirements explicit.
 7. Use the repository's configured checks. Once Terraform roots exist, check
    `terraform fmt -check -recursive`, initialize each affected root with
    `terraform init -backend=false`, and run `terraform validate`. Run configured
