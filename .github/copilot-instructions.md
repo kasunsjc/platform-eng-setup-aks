@@ -12,6 +12,11 @@
   Explain licensing and operational trade-offs; do not label current Terraform
   releases or managed Azure services as OSI-approved open source.
 - Keep changes focused. Do not provision resources when asked only for a plan.
+- Use the AKS Labs source links and adaptation decisions in `README.md` when
+  improving platform patterns. Treat lab commands as examples, not approved
+  production defaults; verify current support and cite the specific source used.
+  Preserve Terraform ownership and Azure-managed defaults rather than silently
+  introducing CAPZ, ASO, kro, or a new management cluster.
 
 ## Git workflow
 
@@ -52,6 +57,12 @@
   certificates still need supported issuance/renewal/controller integration.
 - Retain Argo CD and later Backstage; Flux is an alternative, not a second
   reconciler. Record operational cost and approval for open-source exceptions.
+- Bridge approved Terraform output to separate GitOps bootstrap using non-secret,
+  allowlisted metadata and runtime authentication. Protect root applications,
+  AppProjects, ApplicationSet generators, and cluster registration from team edits.
+- Validate generated destinations, child readiness, and parent/selector deletion
+  behavior before automation. Sync waves alone are not cross-application readiness
+  guarantees; review finalizers/pruning rather than copying lab cleanup commands.
 - Use immutable image digests, signature trust rules, restricted pod security,
   network policies, and documented exceptions. Do not silently weaken controls.
 - Keep production applies behind explicit approval. Never run privileged workflows

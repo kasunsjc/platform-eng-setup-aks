@@ -235,6 +235,62 @@ configuration stays here or moves to a dedicated deployment repository.
 
 ## Phased rollout and acceptance gates
 
+### Reference patterns: AKS Labs platform engineering
+
+Use the [Azure-Samples AKS Labs platform-engineering series](https://azure-samples.github.io/aks-labs/docs/category/platform-engineering)
+as a learning reference, not a production deployment specification. The rendered
+site could not be fetched during this update; the three lab sources below were
+reviewed through GitHub on 2026-11-24. Their patterns inform this plan, but their
+commands, version choices, and expected output have not been tested here.
+
+| Reviewed lab | Pattern to adapt | Decision for this repository |
+| --- | --- | --- |
+| [GitOps, CAPZ, and ASO](https://github.com/Azure-Samples/aks-labs/blob/main/docs/platform-engineering/aks-capz-aso.md) | Separate infrastructure readiness from GitOps bootstrap; use workload identity and deliberate controller scope | Keep Terraform for AKS and Azure lifecycle; use approved pipelines for self-service rather than installing CAPZ/ASO |
+| [App of Apps](https://github.com/Azure-Samples/aks-labs/blob/main/docs/platform-engineering/app-of-apps.md) | GitOps Bridge, modular child applications, ApplicationSets, and cluster metadata selecting add-ons | Adopt a platform-owned root application; introduce allowlisted ApplicationSets only when multiple targets justify them |
+| [Kube Resource Orchestrator (kro)](https://github.com/Azure-Samples/aks-labs/blob/main/docs/platform-engineering/using-kro.md) | Validated developer-facing inputs, reusable compositions, and explicit dependency graphs | Apply these concepts to Terraform modules and service templates; do not add kro or Azure-resource custom resources to the baseline |
+
+**GitOps Bridge contract (phases 1–3):** after an approved Terraform apply, pass
+only necessary non-secret cluster metadata to a separately authorized bootstrap
+step: cluster/resource IDs, environment, repository/path/revision, identity
+references, and an allowlist of GitOps-owned capabilities. Retrieve authentication
+at execution time; do not export kubeconfigs, tokens, secret values, or full
+Terraform state as Git metadata. Verify private endpoint/DNS reachability, cluster
+readiness, identity/RBAC, and managed add-on ownership before registration.
+Bootstrap must be repeatable, recoverable, and restricted to approved clusters.
+
+**App of Apps contract (phase 3):** separate platform child applications from
+team workloads. Platform administrators own the root, AppProjects, ApplicationSet
+generators, and cluster registration metadata; team PRs may change only permitted
+workload paths and inputs. Prevent untrusted values from selecting arbitrary
+repositories, projects, destinations, or production targets. Use explicit
+environment/cluster selectors and capability allowlists; Azure-managed services
+must not trigger installation of duplicate self-hosted charts.
+
+Order CRDs, controllers, policy prerequisites, and workloads using explicit
+readiness gates. Sync waves can order resources within an application, but do not
+alone guarantee readiness across independent child applications; validate child
+health or use separate staged synchronization. Verify the generated applications
+before enabling automation. Review cascading finalizers, pruning, ApplicationSet
+deletion, and cluster deregistration so removing a parent or selector cannot
+silently delete protected production workloads.
+
+**Developer contract (phase 5):** expose validated service/team/environment inputs,
+ownership, resource sizing, and approved dependency choices through templates and
+reviewed workflows. Return request status, deployment links, and failure/rollback
+guidance. Do not require a new management cluster or Kubernetes infrastructure
+operators just to provide self-service. CAPZ, ASO, kro, Kargo, or additional Argo
+controllers require a separate architecture decision, cost/support review, and
+non-production trial. Any future Azure-resource ownership migration needs an
+explicit state/reconciler handoff and recovery plan; never run Terraform and an
+operator against the same resource.
+
+**Lab-to-production safeguards:** translate Azure CLI creation into reviewed
+Terraform; replace moving `latest`/`stable`/`HEAD` references for external artifacts
+with reviewed immutable versions/revisions. Do not inherit broad subscription
+roles, public administrative endpoints, unrestricted Argo projects, blanket
+auto-pruning, or destructive troubleshooting steps. Retain private access,
+least privilege, signatures, managed observability, and production approval gates.
+
 ### 1. Foundation and bootstrap
 
 Agree the decisions above; establish subscriptions, tags, identities, budgets,
@@ -272,6 +328,9 @@ then enforce with narrowly scoped, expiring exceptions.
 **Exit gate:** one sample service deploys from Git with valid TLS, restricted
 network access, rotated secrets, and verified images. Drift is detected, a
 bad image/pod is rejected, and a Git revert restores the previous release.
+The bootstrap can be rerun without duplicate ownership; generated child
+applications target only approved environments. CRD/controller readiness and a
+non-production parent/selector deletion exercise demonstrate deletion protections.
 
 ### 4. Reliability, observability, and cost
 
@@ -303,6 +362,8 @@ Do not give the portal unrestricted Terraform or cluster-admin access.
 **Exit gate:** a developer onboards a service, deploys to development, promotes
 the same signed digest through staging and production approval, finds telemetry,
 and rolls back without requiring platform-admin credentials.
+Invalid template inputs and unauthorized destination/project changes are rejected;
+the requester can see onboarding status and recover from a failed workflow.
 
 ### 6. Production readiness and ongoing operations
 
@@ -326,6 +387,8 @@ successful cloud deployment based on static checks alone.
 | Policies | Azure Policy compliance/enforcement and Pod Security Admission allow/deny cases; Kyverno CLI tests for retained signature rules or gaps |
 | Managed services | Region/SKU/GA status, provider support, managed add-on ownership, private ingestion/query/Grafana data-source paths, collection rules, and RBAC |
 | Integration | Private DNS/API reachability, network-policy allow/deny cases, CSI rotation/application reload, TLS renewal, GitOps drift/rollback, and trace/log/metric correlation |
+| GitOps Bridge and composition | Bootstrap rerun/recovery, non-secret metadata allowlists, generated ApplicationSet destinations, child readiness, and parent/selector deletion protections in non-production |
+| Self-service | Template input validation, team authorization, request status, failed-workflow recovery, and same-digest promotion |
 | Operations | Node drain/upgrade rehearsal, Action Group alert delivery, actual volume backup coverage and isolated restore to agreed RTO/RPO, and cost/retention review |
 
 ## Cost and operational trade-offs
@@ -358,6 +421,7 @@ separately during implementation.
 
 ## References
 
+- [AKS Labs platform-engineering series](https://azure-samples.github.io/aks-labs/docs/category/platform-engineering) — source links and adaptation decisions are in the reference-patterns section above.
 - [AKS baseline architecture](https://learn.microsoft.com/azure/architecture/reference-architectures/containers/aks/baseline-aks)
 - [AKS Workload Identity](https://learn.microsoft.com/azure/aks/workload-identity-overview)
 - [Azure Monitor managed Prometheus](https://learn.microsoft.com/azure/azure-monitor/metrics/prometheus-metrics-overview)

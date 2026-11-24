@@ -51,3 +51,25 @@ description: Implement or review Terraform for Azure networking, identity, state
 Report affected environments, checks actually run, remaining assumptions,
 whether a plan/apply was authorized and executed, and any required follow-up.
 Do not claim resources exist from a successful format or validation check.
+
+## AKS Labs: Terraform-to-GitOps adaptation
+
+Consult the [GitOps/CAPZ/ASO lab](https://github.com/Azure-Samples/aks-labs/blob/main/docs/platform-engineering/aks-capz-aso.md)
+and [App of Apps lab](https://github.com/Azure-Samples/aks-labs/blob/main/docs/platform-engineering/app-of-apps.md)
+alongside the adaptation contracts in `README.md`. Use their separation and
+bootstrap concepts, not their Azure CLI resource creation or operator ownership.
+
+- Define a minimal non-secret output contract: cluster/resource IDs, environment,
+  identity references, and approved GitOps repository/path/revision/capabilities.
+  Never hand full state, tokens, or kubeconfigs to Git or portal templates.
+- Gate separate bootstrap on a completed reviewed apply, private DNS/API access,
+  cluster readiness, scoped identity authorization, and the managed-object
+  inventory. Test reruns and recovery from partial bootstrap in non-production.
+- Keep cluster metadata changes under platform review; metadata must not grant
+  arbitrary repository, destination, or production deployment access.
+- Prefer validated module inputs and approved workflows for self-service instead
+  of CAPZ/ASO/kro installation. Any approved ownership migration must identify
+  state handoff, the single active owner, drift checks, deletion protection, and
+  recovery before either reconciler changes an existing resource.
+- Recheck current APIs, versions, and regional support. Do not copy moving lab
+  artifact references, broad roles, or cleanup steps into production automation.

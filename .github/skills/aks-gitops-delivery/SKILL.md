@@ -56,3 +56,32 @@ description: Implement or review AKS platform components and workload delivery w
 Describe ownership, target environment, version changes, rendered/static checks,
 integration evidence, rollback steps, and unresolved security or recovery risks.
 Never apply production manifests or bypass GitOps merely to complete a review.
+
+## AKS Labs: safe App of Apps workflow
+
+Use the [App of Apps lab](https://github.com/Azure-Samples/aks-labs/blob/main/docs/platform-engineering/app-of-apps.md)
+for modular composition and metadata-driven ApplicationSets, subject to the
+Terraform/Azure/Argo CD contracts in `README.md`.
+
+1. Establish a platform-owned root and separate child applications for approved
+   platform components and team workloads. Protect roots, projects, generators,
+   and cluster registration metadata; do not expose them as unrestricted
+   developer-template inputs.
+2. For justified multi-target delivery, use explicit environment/cluster
+   selectors and allowlisted repositories, revisions, paths, and capabilities.
+   Inspect generated applications before synchronization. Avoid dynamic
+   AppProject or production destination selection by untrusted inputs.
+3. Retrieve cluster authentication through approved runtime bootstrap, not Git.
+   Cluster registration Secrets containing credentials remain sensitive; do not
+   commit them even when some registration metadata is non-secret.
+4. Check CRD/controller readiness before custom resources. Sync waves only order
+   resources within their synchronization context; test child health handling or
+   stage synchronization instead of assuming cross-application dependency safety.
+5. Test drift/revert, bootstrap reruns, and parent/selector deletion in
+   non-production. Explicitly review automated pruning, cascading finalizers,
+   ApplicationSet resource preservation, and cluster deregistration behavior.
+   Do not delete CRDs or adoption metadata as a generic ownership-conflict fix.
+6. Keep managed-service capability flags from selecting duplicate self-hosted
+   charts. Pin external lab-derived artifacts to reviewed versions/revisions.
+   Kargo, Argo Rollouts/Events/Workflows, CAPZ, ASO, and kro are not baseline
+   dependencies; require a concrete gap and approval before adding them.

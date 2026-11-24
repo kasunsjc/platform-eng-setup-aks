@@ -50,3 +50,25 @@ description: Plan or review an Azure-managed-first AKS developer platform using 
 - Managed-service choices have coverage evidence; open-source exceptions have
   justification and approval rather than duplicate ownership.
 - Proposed work is not presented as completed deployment or successful testing.
+
+## Using the AKS Labs reference
+
+Use the [platform-engineering series](https://azure-samples.github.io/aks-labs/docs/category/platform-engineering)
+and the source/adaptation table in `README.md`. Read the relevant lab before
+attributing a recommendation to it; if the site is inaccessible, use the linked
+GitHub source and report which source was reviewed and what remains unverified.
+
+- Adapt GitOps Bridge as a contract between approved Terraform provisioning and
+  separate Argo CD bootstrap, not as permission to give Argo CD Azure ownership.
+- Plan modular App of Apps boundaries and, when needed, ApplicationSets with
+  allowlisted environment metadata. Assign ownership for roots, generators,
+  destinations, readiness checks, and deletion protections.
+- Translate kro's reusable schemas and dependency graphs into validated Terraform
+  modules and service templates. Define request status, authorization, failure
+  recovery, and measurable developer onboarding gates before adopting more tools.
+- Treat CAPZ/ASO/kro and extra management clusters/controllers as optional
+  architectural alternatives requiring approval, operational review, and an
+  explicit migration/recovery plan. Keep the baseline Terraform-managed.
+- Document differences from lab defaults: private networking, least privilege,
+  immutable external revisions, managed services, and approved production changes.
+  Do not copy workshop commands or interpret sample output as validation evidence.
