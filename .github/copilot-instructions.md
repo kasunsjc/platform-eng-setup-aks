@@ -4,9 +4,9 @@
 
 - Read `README.md` before changing the platform design. It is the architecture,
   implementation sequence, and acceptance-gate source of truth.
-- This repository currently contains a plan and Copilot guidance, not deployed
-  infrastructure. Do not describe proposed paths, commands, or resources as
-  existing or tested without verifying them.
+- This repository contains a plan, Copilot guidance, and initial Terraform
+  foundation code, but no deployed infrastructure. Do not describe proposed
+  paths, commands, or resources as deployed or tested without verifying them.
 - Prefer Azure-managed services, AKS, and Terraform as selected in the plan.
   Retain open-source tools for documented gaps, not duplicate managed capabilities.
   Explain licensing and operational trade-offs; do not label current Terraform
@@ -37,6 +37,19 @@
 - Prefer OIDC federation for CI and AKS Workload Identity for pods. Use
   least-privilege scoped RBAC; never introduce long-lived client secrets or
   public AKS API access as a CI connectivity workaround.
+- Enterprise and production AKS clusters must use a private API and private
+  connectivity. A separately isolated, non-production demo may use a public
+  AKS API solely for direct laptop access, with explicit approved source IP
+  ranges, Entra authentication, local accounts disabled, and least-privilege
+  access. Do not allow unrestricted API access or use this as a CI workaround.
+- Treat the demo's public access as a documented security exception, not an
+  enterprise pattern. Use synthetic data, record ownership and expiry, and
+  document the private networking, DNS, access, and bootstrap changes needed
+  before enterprise use. The isolated demo allows all public networks to reach
+  ACR, Key Vault, and Terraform state without IP allowlists; enforce Entra
+  authentication and least privilege, and document the added exposure.
+  Other demo endpoints retain their own restrictions. Do not expose
+  unauthenticated administrative interfaces.
 - Bootstrap private connectivity and state before deploying a private AKS cluster.
   Separate Azure infrastructure provisioning from Argo CD bootstrap.
 - Terraform owns Azure resources, monitoring, backup, policy, and managed add-on
@@ -70,8 +83,9 @@
 
 ## Validation
 
-- Inspect existing tooling before running commands. No infrastructure or
-  automated test suite exists yet; add checks only alongside implementation.
+- Inspect existing tooling before running commands. Terraform foundation roots
+  exist, but no automated test suite is configured; add checks alongside
+  implementation.
 - For documentation-only edits, check consistency, local links, skill metadata,
   and accidental secrets. Do not deploy Azure resources to validate prose.
 - Verify managed-service region/SKU/GA status, Terraform support, private

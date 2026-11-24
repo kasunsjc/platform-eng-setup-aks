@@ -6,9 +6,18 @@ meet requirements. Retain open-source tools for gaps rather than duplicating
 managed capabilities. Start with a small, usable paved road before adding a
 developer portal.
 
-**Status:** design only. This repository does not yet contain deployable Terraform,
-Kubernetes manifests, pipelines, or an installed platform. All directories and
-validation commands below are proposed unless explicitly marked as existing.
+**Status:** phase-one Terraform foundation code is present for state bootstrap
+and a non-production network, ACR, Key Vault, and GitHub OIDC identity. No Azure
+resources have been provisioned; AKS, Kubernetes manifests, GitOps bootstrap,
+and pipelines are not implemented. Environment-specific inputs and authorization
+remain to be agreed.
+
+**Demo exception:** the isolated, non-production demo configures ACR, Key Vault,
+and state endpoints to accept traffic from all public networks, without IP
+allowlists. Entra authentication and RBAC still apply. This increases exposure,
+especially for sensitive state, and is not an enterprise deployment pattern.
+AKS and other platform services are not implemented yet; the future demo AKS
+API remains subject to its separate source-IP restrictions.
 
 ## Outcomes and scope
 
@@ -72,7 +81,7 @@ Azure Monitor alerts -> Action Groups -> responders
 | Capability | Preferred choice | Responsibility and exceptions |
 | --- | --- | --- |
 | Azure infrastructure | Terraform, AzureRM provider | Versioned modules and isolated environment state |
-| Kubernetes runtime | AKS with Azure CNI Overlay and supported Cilium networking | Private API, network-policy enforcement, system/user node pools |
+| Kubernetes runtime | AKS with Azure CNI Overlay and supported Cilium networking | Enterprise private API; restricted public API for an isolated laptop demo only; network-policy enforcement, system/user node pools |
 | Delivery | Argo CD, Helm, Kustomize | Pull-based reconciliation and environment overlays |
 | Image builds | BuildKit, OCI images stored in ACR | Reproducible builds and immutable digest promotion |
 | Supply-chain checks | Microsoft Defender for Containers; Trivy, Syft, Cosign in CI | Defender complements, not replaces, CI scanning, SBOMs, signing, and admission verification |
@@ -131,14 +140,27 @@ controllers. Record the requirement, operational cost, and approval for exceptio
   subnets as required, private DNS links, and controlled outbound connectivity.
   Document required destinations before restricting egress; consider Azure
   Firewall when the threat model warrants it.
-- Keep the AKS API private. Run deployment jobs on ephemeral, isolated runners
-  with VNet connectivity, private DNS resolution, and access to required Azure
-  endpoints. Never expose the API publicly merely to make hosted CI work.
-- Prefer private endpoints for ACR, Key Vault, Terraform state, and backup storage
-  where supported by the chosen service tiers. Include tier costs and DNS tests.
+- Keep enterprise and production AKS APIs private. Run their deployment jobs on
+  ephemeral, isolated runners with VNet connectivity, private DNS resolution,
+  and access to required Azure endpoints. Never expose an API publicly merely
+  to make hosted CI work.
+- An isolated non-production demo may instead use a public AKS API for direct
+  laptop access. Restrict its authorized IP ranges to approved laptop egress
+  addresses and required cluster connectivity, enable Entra authentication,
+  disable local accounts, and grant least-privilege RBAC. Public exposure still
+  carries risk, and changing laptop IPs can interrupt access. Use synthetic
+  data; record the exception's owner, expiry, and hardening plan.
+- Use private endpoints for enterprise and production ACR, Key Vault, Terraform
+  state, and backup storage where supported; include tier costs and DNS tests.
+  The isolated demo permits all public networks to reach ACR, Key Vault and
+  state, relying on Entra authentication and least-privilege RBAC rather than
+  IP allowlists. Document the exception and test authorized and unauthorized
+  access. Other endpoints retain their separately documented restrictions.
 - Publish only intended application routes through the selected gateway.
-  Keep Argo CD and Backstage internal initially and select Managed Grafana
-  networking that meets private-access requirements. Authenticate with Entra
+  Keep enterprise Argo CD and Backstage internal and select Managed Grafana
+  networking that meets private-access requirements. For the demo, plan
+  laptop access through approved public endpoints where supported; do not
+  deploy unauthenticated administrative interfaces. Authenticate with Entra
   ID/OIDC and apply team-scoped authorization and data-source RBAC.
 - Use Entra groups for humans and least-privilege RBAC. Disable local AKS accounts.
   Enable AKS OIDC issuer and Workload Identity; scope each workload identity to
@@ -158,18 +180,18 @@ controllers. Record the requirement, operational cost, and approval for exceptio
 
 ```text
 infra/
-  bootstrap/                 # State storage and initial federation
+  bootstrap/state/           # Terraform state storage bootstrap (implemented)
   modules/
     network/
-    identity/
     acr/
     key-vault/
+    identity/
     aks/
     monitoring/              # Managed telemetry, collection, alerting, Grafana
     backup/                  # Azure Backup vault, policies, supported protection
     policy/                  # Azure Policy assignments and Defender configuration
   environments/
-    dev/
+    dev/                      # Non-production foundation (implemented; no AKS)
     staging/
     prod/
 platform/
@@ -182,8 +204,10 @@ platform/
 templates/                   # Later: service skeletons and Backstage templates
 ```
 
-These paths do not exist yet. Add them only as implementation phases begin.
-Keep application source in service repositories and decide whether their GitOps
+The state bootstrap and development foundation roots and their network, ACR,
+Key Vault, and identity modules now exist. AKS, monitoring, backup, policy,
+staging/production roots, GitOps, and templates remain future work. Keep
+application source in service repositories and decide whether their GitOps
 configuration stays here or moves to a dedicated deployment repository.
 
 ### State and bootstrap
@@ -202,8 +226,10 @@ configuration stays here or moves to a dedicated deployment repository.
    root module. Exclude `.terraform/`, state, saved plans, secrets, and
    credential-bearing variable files when those artifacts are introduced.
 5. Provision Azure infrastructure, then install Argo CD through a separate,
-   explicit bootstrap step with private cluster access. Do not combine an
-   unknown/new cluster endpoint and Kubernetes provider setup in one initial apply.
+   explicit bootstrap step using the approved access path: private for enterprise
+   and production, or the restricted laptop endpoint for the isolated demo.
+   Do not combine an unknown/new cluster endpoint and Kubernetes provider setup
+   in one initial apply.
 6. Terraform owns Azure resources, including monitoring, backup, policy, managed
    add-on enablement, extensions, identities, and associated Azure configuration.
    Azure manages objects installed by its enabled add-ons/extensions; exclude
@@ -254,8 +280,9 @@ only necessary non-secret cluster metadata to a separately authorized bootstrap
 step: cluster/resource IDs, environment, repository/path/revision, identity
 references, and an allowlist of GitOps-owned capabilities. Retrieve authentication
 at execution time; do not export kubeconfigs, tokens, secret values, or full
-Terraform state as Git metadata. Verify private endpoint/DNS reachability, cluster
-readiness, identity/RBAC, and managed add-on ownership before registration.
+Terraform state as Git metadata. Verify the approved API and endpoint/DNS
+reachability, cluster readiness, identity/RBAC, and managed add-on ownership
+before registration. Enterprise and production access must be private.
 Bootstrap must be repeatable, recoverable, and restricted to approved clusters.
 
 **App of Apps contract (phase 3):** separate platform child applications from
@@ -287,27 +314,35 @@ operator against the same resource.
 **Lab-to-production safeguards:** translate Azure CLI creation into reviewed
 Terraform; replace moving `latest`/`stable`/`HEAD` references for external artifacts
 with reviewed immutable versions/revisions. Do not inherit broad subscription
-roles, public administrative endpoints, unrestricted Argo projects, blanket
-auto-pruning, or destructive troubleshooting steps. Retain private access,
-least privilege, signatures, managed observability, and production approval gates.
+roles, unrestricted Argo projects, blanket auto-pruning, or destructive
+troubleshooting steps. Retain enterprise private access, least privilege,
+signatures, managed observability, and production approval gates. Demo public
+administrative access requires authentication, authorization, TLS, restricted
+source networks where supported, and a documented exception.
 
 ### 1. Foundation and bootstrap
 
 Agree the decisions above; establish subscriptions, tags, identities, budgets,
 remote state, network, private DNS, ACR, Key Vault, and runner connectivity.
 
-**Exit gate:** a trusted runner authenticates without static credentials, resolves
-private endpoints, accesses isolated state, and produces a reviewed Terraform
-plan. Budget alerts, ownership, and state recovery responsibilities are assigned.
+**Exit gate:** a trusted runner authenticates without static credentials, reaches
+the approved endpoints, accesses isolated state, and produces a reviewed
+Terraform plan. Enterprise and production runners also resolve private endpoints.
+Budget alerts, ownership, and state recovery responsibilities are assigned.
 
 ### 2. AKS baseline
 
-Create private AKS with separate system and user node pools, zone distribution
-where supported, autoscaling, managed identities, Azure Policy for AKS, Defender
-for Containers, the Key Vault CSI add-on, and an upgrade strategy. Review their
-permissions and cost before enablement. Define namespace quotas, requests/limits, default-deny network
-policies with explicit DNS/dependency allowances, disruption budgets, and
-topology spread constraints.
+For enterprise or production, create private AKS with separate system and user
+node pools, zone distribution where supported, autoscaling, managed identities,
+Azure Policy for AKS, Defender for Containers, the Key Vault CSI add-on, and an
+upgrade strategy. Review their permissions and cost before enablement. Define
+namespace quotas, requests/limits, default-deny network policies with explicit
+DNS/dependency allowances, disruption budgets, and topology spread constraints.
+
+For the isolated demo, use the restricted public laptop access exception above.
+Before enterprise adoption, provision a separate private cluster and establish
+private DNS, state and runner connectivity, then review and test the bootstrap
+and access controls; do not promote the demo configuration as production-ready.
 
 **Exit gate:** unauthorized users cannot administer the cluster; a sample pod can
 pull from ACR and use its scoped workload identity; prohibited cross-namespace
@@ -376,9 +411,11 @@ cost review, tested runbooks, restore evidence, and a documented support model.
 
 ## Validation during implementation
 
-No lint, build, or test tooling is currently configured in this repository.
-Introduce checks alongside the implementation they validate; do not report a
-successful cloud deployment based on static checks alone.
+No CI lint, build, or automated test workflow is currently configured. Run
+formatting, backend-free initialization, validation, and the offline Terraform
+tests for each root; add broader checks alongside the implementation they
+validate. Static checks do not prove cloud connectivity, service availability,
+or a successful deployment.
 
 | Area | Planned checks |
 | --- | --- |

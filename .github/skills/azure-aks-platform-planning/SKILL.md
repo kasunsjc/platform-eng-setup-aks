@@ -23,9 +23,11 @@ description: Plan or review an Azure-managed-first AKS developer platform using 
    Kyverno signature verification/gap policies, OpenCost, or Velero separately.
    Evaluate Application Gateway for Containers and Azure DNS/Key Vault certificate
    integration, including required controllers and a documented ingress fallback.
-4. Cover private networking and runner connectivity, state bootstrap/recovery,
-   OIDC and Workload Identity, least privilege, secret rotation, admission policy,
-   image provenance, observability, cost attribution, and tested backups.
+4. Cover private networking and runner connectivity for enterprise and production,
+   plus state bootstrap/recovery, OIDC and Workload Identity, least privilege,
+   secret rotation, admission policy, image provenance, observability, cost
+   attribution, and tested backups. An isolated demo may use the documented
+   restricted public API exception for direct laptop access, not as a CI workaround.
 5. Explain managed-service and licensing exceptions. Verify support and
    compatibility, region/SKU/GA status, private ingestion/query/Grafana paths,
    RBAC, telemetry costs/retention, and backup/restore coverage before adoption.
@@ -45,7 +47,8 @@ description: Plan or review an Azure-managed-first AKS developer platform using 
 
 - Every component has a purpose, ownership boundary, and operational cost.
 - Production has a separate security and approval boundary.
-- Bootstrap can reach private endpoints without permanently relaxing controls.
+- Enterprise and production bootstrap can reach private endpoints; demo public
+  access is restricted, documented, and not treated as production-ready.
 - Recovery includes persistent data, secret dependencies, and a restore exercise.
 - Managed-service choices have coverage evidence; open-source exceptions have
   justification and approval rather than duplicate ownership.
@@ -69,6 +72,7 @@ GitHub source and report which source was reviewed and what remains unverified.
 - Treat CAPZ/ASO/kro and extra management clusters/controllers as optional
   architectural alternatives requiring approval, operational review, and an
   explicit migration/recovery plan. Keep the baseline Terraform-managed.
-- Document differences from lab defaults: private networking, least privilege,
-  immutable external revisions, managed services, and approved production changes.
+- Document differences from lab defaults: enterprise private networking,
+  restricted demo access, least privilege, immutable external revisions, managed
+  services, and approved production changes.
   Do not copy workshop commands or interpret sample output as validation evidence.

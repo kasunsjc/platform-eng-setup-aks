@@ -20,8 +20,10 @@ description: Implement or review AKS platform components and workload delivery w
    Gateway API, and CRD compatibility. Sequence CRDs before custom resources and
    test upgrades in non-production.
 4. Use restricted Argo CD AppProjects with explicit repository, namespace, cluster,
-   and resource permissions. Keep administrative interfaces internal and protect
-   access with SSO/RBAC. Avoid unrestricted wildcard destinations.
+   and resource permissions. Keep enterprise administrative interfaces internal.
+   Demo interfaces may use a documented public access exception with TLS,
+   SSO/RBAC, and source restrictions where supported. Avoid unrestricted
+   wildcard destinations.
 5. Configure workload identity, scoped Key Vault access, and application
    SecretProviderClasses for the AKS Secrets Store CSI Driver; store references,
    not secret values. Prefer mounted secrets and test rotation/application reload.

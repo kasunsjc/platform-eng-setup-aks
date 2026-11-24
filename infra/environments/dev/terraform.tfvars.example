@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars and supply required organization-specific values.
+# Choose unique resource names and non-overlapping CIDRs after reviewing the
+# subscription, region, DNS, network, quota, and cost requirements.
+# Never place credentials or secret values in this file.

@@ -18,8 +18,15 @@ description: Implement or review Terraform for Azure networking, identity, state
    plans, kubeconfigs, or credential-bearing variable files in Git. Sensitive
    Terraform attributes can still be stored in state.
 5. Prefer federated OIDC for CI and managed/workload identities for Azure access.
-   Keep the AKS API private and local accounts disabled. Scope RBAC narrowly;
-   verify private runner reachability instead of opening public access.
+   Keep enterprise and production AKS APIs private and disable local accounts.
+   For an isolated non-production demo only, a public AKS API may be used for
+   direct laptop access with explicitly approved source IP ranges, Entra
+   authentication, and a documented security exception. Do not use public API
+   access as a CI connectivity workaround. Scope RBAC narrowly; verify private
+   runner reachability for private clusters. Demo ACR, Key Vault, and state
+   endpoints allow all public networks without IP allowlists as a documented
+   exception. Retain Entra authentication and least privilege; document the
+   enterprise private alternative.
 6. Separate Azure provisioning from Argo CD bootstrap. Do not configure Kubernetes
    providers against an endpoint that is still unknown in the initial apply.
    Own Azure resources and managed add-on/extension configuration in Terraform;
@@ -62,9 +69,10 @@ bootstrap concepts, not their Azure CLI resource creation or operator ownership.
 - Define a minimal non-secret output contract: cluster/resource IDs, environment,
   identity references, and approved GitOps repository/path/revision/capabilities.
   Never hand full state, tokens, or kubeconfigs to Git or portal templates.
-- Gate separate bootstrap on a completed reviewed apply, private DNS/API access,
-  cluster readiness, scoped identity authorization, and the managed-object
-  inventory. Test reruns and recovery from partial bootstrap in non-production.
+- Gate separate bootstrap on a completed reviewed apply, the approved API/DNS
+  access path (private for enterprise and production), cluster readiness,
+  scoped identity authorization, and the managed-object inventory. Test reruns
+  and recovery from partial bootstrap in non-production.
 - Keep cluster metadata changes under platform review; metadata must not grant
   arbitrary repository, destination, or production deployment access.
 - Prefer validated module inputs and approved workflows for self-service instead

@@ -1,0 +1,6 @@
+# Copy to backend.hcl and fill in the non-secret values after the storage account
+# and containers exist. Keep backend.hcl out of version control.
+storage_account_name = "REPLACE_WITH_STATE_STORAGE_ACCOUNT"
+container_name       = "bootstrap"
+key                  = "bootstrap.tfstate"
+use_azuread_auth     = true

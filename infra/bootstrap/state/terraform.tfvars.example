@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars and supply organization-specific, non-secret values.
+# Never place credentials or secret values in this file.
